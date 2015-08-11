@@ -20,6 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import collections
 import sys
 import argparse
 import pprint
@@ -31,7 +32,7 @@ import protocol15405
 class EventLogger:
     def __init__(self):
         self._event_stats = {}
-        
+
     def log(self, output, event):
         # update stats
         if '_event' in event and '_bits' in event:
@@ -41,11 +42,38 @@ class EventLogger:
             self._event_stats[event['_event']] = stat
         # write structure
         pprint.pprint(event, stream=output)
-        
+
     def log_stats(self, output):
         for name, stat in sorted(self._event_stats.iteritems(), key=lambda x: x[1][1]):
             print >> output, '"%s", %d, %d,' % (name, stat[0], stat[1] / 8)
-    
+
+
+class Hots2Lambda:
+    @staticmethod
+    def flatten(dist, parent_key='', sep='_'):
+        items = []
+        for k, v in dist.items():
+            new_key = parent_key + sep + str(k) if parent_key else k
+            if isinstance(v, collections.MutableMapping):
+                items.extend(Hots2Lambda.flatten(v, new_key, sep).items())
+            elif isinstance(v, collections.Iterable):
+                # log may contain list with a singleton item which is map,
+                # for example, 500: [{'attrid': 500, 'namespace': 999, 'value': 'Humn'}]
+                if len(v) == 1 and isinstance(v[0], collections.MutableMapping):
+                    items.extend(Hots2Lambda.flatten(v[0], new_key, sep).items())
+                else:
+                    items.append((new_key, v))
+            else:
+                items.append((new_key, v))
+        return dict(items)
+
+    @staticmethod
+    def dict2lambdalog(dist):
+        log = ''
+        for k, v in dist.items():
+            kv = '{}[{}]'.format(k, v)
+            log = log + ',' + kv if log else kv
+        return log
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -69,7 +97,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     archive = mpyq.MPQArchive(args.replay_file)
-    
+
     logger = EventLogger()
 
     # Read the protocol header, this can be read with any protocol
@@ -84,8 +112,9 @@ if __name__ == '__main__':
         protocol = __import__('protocol%s' % (baseBuild,))
     except:
         print >> sys.stderr, 'Unsupported base build: %d' % baseBuild
-        sys.exit(1)
-        
+        protocol = __import__('protocol34835')
+        # sys.exit(1)
+
     # Print protocol details
     if args.details:
         contents = archive.read_file('replay.details')
@@ -103,13 +132,20 @@ if __name__ == '__main__':
     if args.gameevents:
         contents = archive.read_file('replay.game.events')
         for event in protocol.decode_replay_game_events(contents):
-            logger.log(sys.stdout, event)
+            # if event['_event'] == 'NNet.Game.SUnitClickEvent':
+            # logger.log(sys.stdout, event)
+            flatten = Hots2Lambda.flatten(event)
+            log = Hots2Lambda.dict2lambdalog(flatten)
+            print log
 
     # Print message events
     if args.messageevents:
         contents = archive.read_file('replay.message.events')
         for event in protocol.decode_replay_message_events(contents):
-            logger.log(sys.stdout, event)
+            #logger.log(sys.stdout, event)
+            flatten = Hots2Lambda.flatten(event)
+            log = Hots2Lambda.dict2lambdalog(flatten)
+            print log
 
     # Print tracker events
     if args.trackerevents:
@@ -122,9 +158,11 @@ if __name__ == '__main__':
     if args.attributeevents:
         contents = archive.read_file('replay.attributes.events')
         attributes = protocol.decode_replay_attributes_events(contents)
-        logger.log(sys.stdout, attributes)
-        
+        # logger.log(sys.stdout, attributes)
+        flatten = Hots2Lambda.flatten(attributes)
+        log = Hots2Lambda.dict2lambdalog(flatten)
+        print log
+
     # Print stats
     if args.stats:
         logger.log_stats(sys.stderr)
-
