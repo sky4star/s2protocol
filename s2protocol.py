@@ -25,6 +25,7 @@ import datetime
 import sys
 import argparse
 import pprint
+import hashlib
 
 from mpyq import mpyq
 import protocol15405
@@ -69,12 +70,15 @@ class Hots2Lambda:
         return dict(items)
 
     @staticmethod
-    def dict2lambdalog(dist):
-        log = ''
+    def dict2lambdalog(dist, game_id, game_time):
+        log = 'game_id[{}],timestamp[{}]'.format(game_id, game_time)
         for k, v in dist.items():
             # check if value is unicode, then convert
             if isinstance(v, unicode):
                 v = v.encode('UTF-8')
+            # remove '_' at head for key
+            if str.startswith(k, '_'):
+                k = k[1:]
             kv = '{}[{}]'.format(k, v)
             log = log + ',' + kv if log else kv
         return log
@@ -82,7 +86,21 @@ class Hots2Lambda:
     @staticmethod
     def windowsNTTime2Datetime(wnt):
         unix_time = wnt/1e7 - 11644473600
-        return datetime.datetime.fromtimestamp(unix_time).strftime('%Y-%m-%d %H:%M:%S')
+        return datetime.datetime.fromtimestamp(unix_time).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    @staticmethod
+    def genMatchId(detail):
+        paras = []
+        # get players
+        players = detail['m_playerList']
+        for player in players:
+            paras.append(str(player['m_toon']['m_programId']))
+        # get timestamp
+        paras.append(str(detail['m_timeUTC']))
+        # get map name
+        paras.append(detail['m_title'])
+        return hashlib.md5(','.join(paras)).hexdigest()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -126,13 +144,26 @@ if __name__ == '__main__':
         protocol = __import__('protocol34835')
         # sys.exit(1)
 
+    # Get basic info
+    contents = archive.read_file('replay.details')
+    details = protocol.decode_replay_details(contents)
+    game_time = Hots2Lambda.windowsNTTime2Datetime(details['m_timeUTC'])
+    game_id = Hots2Lambda.genMatchId(details)
+
     # Print protocol details
     if args.details or args.all:
         contents = archive.read_file('replay.details')
         details = protocol.decode_replay_details(contents)
-        #logger.log(sys.stdout, details)
+        # flatten players
+        players = details['m_playerList']
+        for player in players:
+            flatten = Hots2Lambda.flatten(player)
+            log = Hots2Lambda.dict2lambdalog(flatten, game_id, game_time)
+            print log
+        # flatten other parts
+        del details['m_playerList']
         flatten = Hots2Lambda.flatten(details)
-        log = Hots2Lambda.dict2lambdalog(flatten)
+        log = Hots2Lambda.dict2lambdalog(flatten, game_id, game_time)
         print log
 
     # Print protocol init data
@@ -142,7 +173,7 @@ if __name__ == '__main__':
         # ogger.log(sys.stdout, initdata['m_syncLobbyState']['m_gameDescription']['m_cacheHandles'])
         # logger.log(sys.stdout, initdata)
         flatten = Hots2Lambda.flatten(initdata)
-        log = Hots2Lambda.dict2lambdalog(flatten)
+        log = Hots2Lambda.dict2lambdalog(flatten, game_id, game_time)
         print log
 
     # Print game events and/or game events stats
@@ -152,7 +183,7 @@ if __name__ == '__main__':
             # if event['_event'] == 'NNet.Game.SUnitClickEvent':
             # logger.log(sys.stdout, event)
             flatten = Hots2Lambda.flatten(event)
-            log = Hots2Lambda.dict2lambdalog(flatten)
+            log = Hots2Lambda.dict2lambdalog(flatten, game_id, game_time)
             print log
 
     # Print message events
@@ -161,7 +192,7 @@ if __name__ == '__main__':
         for event in protocol.decode_replay_message_events(contents):
             #logger.log(sys.stdout, event)
             flatten = Hots2Lambda.flatten(event)
-            log = Hots2Lambda.dict2lambdalog(flatten)
+            log = Hots2Lambda.dict2lambdalog(flatten, game_id, game_time)
             print log
 
     # Print tracker events
@@ -171,7 +202,7 @@ if __name__ == '__main__':
             for event in protocol.decode_replay_tracker_events(contents):
                 # logger.log(sys.stdout, event)
                 flatten = Hots2Lambda.flatten(event)
-                log = Hots2Lambda.dict2lambdalog(flatten)
+                log = Hots2Lambda.dict2lambdalog(flatten, game_id, game_time)
                 print log
 
     # Print attributes events
@@ -180,12 +211,9 @@ if __name__ == '__main__':
         attributes = protocol.decode_replay_attributes_events(contents)
         # logger.log(sys.stdout, attributes)
         flatten = Hots2Lambda.flatten(attributes)
-        log = Hots2Lambda.dict2lambdalog(flatten)
+        log = Hots2Lambda.dict2lambdalog(flatten, game_id, game_time)
         print log
 
     # Print stats
     if args.stats:
         logger.log_stats(sys.stderr)
-
-    print Hots2Lambda.windowsNTTime2Datetime(130810194098452000)
-
