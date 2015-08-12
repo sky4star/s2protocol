@@ -21,6 +21,7 @@
 # THE SOFTWARE.
 
 import collections
+import datetime
 import sys
 import argparse
 import pprint
@@ -71,9 +72,17 @@ class Hots2Lambda:
     def dict2lambdalog(dist):
         log = ''
         for k, v in dist.items():
+            # check if value is unicode, then convert
+            if isinstance(v, unicode):
+                v = v.encode('UTF-8')
             kv = '{}[{}]'.format(k, v)
             log = log + ',' + kv if log else kv
         return log
+
+    @staticmethod
+    def windowsNTTime2Datetime(wnt):
+        unix_time = wnt/1e7 - 11644473600
+        return datetime.datetime.fromtimestamp(unix_time).strftime('%Y-%m-%d %H:%M:%S')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -177,3 +186,6 @@ if __name__ == '__main__':
     # Print stats
     if args.stats:
         logger.log_stats(sys.stderr)
+
+    print Hots2Lambda.windowsNTTime2Datetime(130810194098452000)
+
