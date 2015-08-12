@@ -94,6 +94,8 @@ if __name__ == '__main__':
                         action="store_true")
     parser.add_argument("--stats", help="print stats",
                         action="store_true")
+    parser.add_argument("--all", help="dump all message in lambda-cloud log format",
+                        action="store_true")
     args = parser.parse_args()
 
     archive = mpyq.MPQArchive(args.replay_file)
@@ -116,20 +118,26 @@ if __name__ == '__main__':
         # sys.exit(1)
 
     # Print protocol details
-    if args.details:
+    if args.details or args.all:
         contents = archive.read_file('replay.details')
         details = protocol.decode_replay_details(contents)
-        logger.log(sys.stdout, details)
+        #logger.log(sys.stdout, details)
+        flatten = Hots2Lambda.flatten(details)
+        log = Hots2Lambda.dict2lambdalog(flatten)
+        print log
 
     # Print protocol init data
     if args.initdata:
         contents = archive.read_file('replay.initData')
         initdata = protocol.decode_replay_initdata(contents)
-        logger.log(sys.stdout, initdata['m_syncLobbyState']['m_gameDescription']['m_cacheHandles'])
-        logger.log(sys.stdout, initdata)
+        # ogger.log(sys.stdout, initdata['m_syncLobbyState']['m_gameDescription']['m_cacheHandles'])
+        # logger.log(sys.stdout, initdata)
+        flatten = Hots2Lambda.flatten(initdata)
+        log = Hots2Lambda.dict2lambdalog(flatten)
+        print log
 
     # Print game events and/or game events stats
-    if args.gameevents:
+    if args.gameevents or args.all:
         contents = archive.read_file('replay.game.events')
         for event in protocol.decode_replay_game_events(contents):
             # if event['_event'] == 'NNet.Game.SUnitClickEvent':
@@ -139,7 +147,7 @@ if __name__ == '__main__':
             print log
 
     # Print message events
-    if args.messageevents:
+    if args.messageevents or args.all:
         contents = archive.read_file('replay.message.events')
         for event in protocol.decode_replay_message_events(contents):
             #logger.log(sys.stdout, event)
@@ -148,14 +156,17 @@ if __name__ == '__main__':
             print log
 
     # Print tracker events
-    if args.trackerevents:
+    if args.trackerevents or args.all:
         if hasattr(protocol, 'decode_replay_tracker_events'):
             contents = archive.read_file('replay.tracker.events')
             for event in protocol.decode_replay_tracker_events(contents):
-                logger.log(sys.stdout, event)
+                # logger.log(sys.stdout, event)
+                flatten = Hots2Lambda.flatten(event)
+                log = Hots2Lambda.dict2lambdalog(flatten)
+                print log
 
     # Print attributes events
-    if args.attributeevents:
+    if args.attributeevents or args.all:
         contents = archive.read_file('replay.attributes.events')
         attributes = protocol.decode_replay_attributes_events(contents)
         # logger.log(sys.stdout, attributes)
